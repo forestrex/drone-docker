@@ -52,6 +52,8 @@ type (
 		LabelSchema []string // label-schema Label map
 		Labels      []string // Label map
 		NoCache     bool     // Docker build no-cache
+		MultiDocker []string // Multi-Dockerfile folder list
+		MultiBase   string   // Multi-Dockerfile folder base
 	}
 
 	// Plugin defines the Docker plugin parameters.
@@ -110,13 +112,14 @@ func (p Plugin) Exec() error {
 		cmds = append(cmds, commandPull(img))
 	}
 
-	cmds = append(cmds, commandBuild(p.Build)) // docker build
+	for _, dockdir := range p.Build.MultiDocker {
+		cmds = append(cmds, commandBuild(p.Build, dockdir)) // docker build
+		for _, tag := range p.Build.Tags {
+			cmds = append(cmds, commandTag(p.Build, tag, dockdir)) // docker tag
 
-	for _, tag := range p.Build.Tags {
-		cmds = append(cmds, commandTag(p.Build, tag)) // docker tag
-
-		if p.Dryrun == false {
-			cmds = append(cmds, commandPush(p.Build, tag)) // docker push
+			if p.Dryrun == false {
+				cmds = append(cmds, commandPush(p.Build, tag, dockdir)) // docker push
+			}
 		}
 	}
 
@@ -185,15 +188,22 @@ func commandInfo() *exec.Cmd {
 }
 
 // helper function to create the docker build command.
-func commandBuild(build Build) *exec.Cmd {
+func commandBuild(build Build, dockername string) *exec.Cmd {
 	args := []string{
 		"build",
 		"--rm=true",
-		"-f", build.Dockerfile,
-		"-t", build.Name,
 	}
 
-	args = append(args, build.Context)
+	if dockername == "" {
+		args = append(args, "-f", build.Dockerfile)
+		args = append(args, "-t", build.Name)
+		args = append(args, build.Context)
+	} else {
+		args = append(args, "-f", build.MultiBase+dockername+"/"+build.Dockerfile)
+		args = append(args, "-t", dockername)
+		args = append(args, build.MultiBase+dockername+"/"+build.Context)
+	}
+
 	if build.Squash {
 		args = append(args, "--squash")
 	}
@@ -287,19 +297,24 @@ func hasProxyBuildArg(build *Build, key string) bool {
 }
 
 // helper function to create the docker tag command.
-func commandTag(build Build, tag string) *exec.Cmd {
-	var (
-		source = build.Name
-		target = fmt.Sprintf("%s:%s", build.Repo, tag)
-	)
+func commandTag(build Build, tag string, dockername string) *exec.Cmd {
+	source := build.Name
+	if dockername != "" {
+		source = dockername
+	}
+	target := fmt.Sprintf("%s/%s:%s", build.Repo, source, tag)
 	return exec.Command(
 		dockerExe, "tag", source, target,
 	)
 }
 
 // helper function to create the docker push command.
-func commandPush(build Build, tag string) *exec.Cmd {
-	target := fmt.Sprintf("%s:%s", build.Repo, tag)
+func commandPush(build Build, tag string, dockername string) *exec.Cmd {
+	source := build.Name
+	if dockername != "" {
+		source = dockername
+	}
+	target := fmt.Sprintf("%s/%s:%s", build.Repo, source, tag)
 	return exec.Command(dockerExe, "push", target)
 }
 

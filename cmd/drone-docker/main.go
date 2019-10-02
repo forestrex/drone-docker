@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/drone-plugins/drone-docker"
+	docker "github.com/forestrex/drone-docker"
 )
 
 var (
@@ -223,6 +223,19 @@ func main() {
 			Usage:  "do not use cached intermediate containers",
 			EnvVar: "PLUGIN_NO_CACHE",
 		},
+		cli.StringSliceFlag{
+			Name:     "multi-docker.list",
+			Usage:    "multi-dockerfile list",
+			Value:    &cli.StringSlice{""},
+			EnvVar:   "PLUGIN_MULTIDOCKER_LIST",
+			FilePath: ".multidocker",
+		},
+		cli.StringFlag{
+			Name:   "multi-docker.base",
+			Usage:  "multi-dockerfile base dir",
+			Value:  "",
+			EnvVar: "PLUGIN_MULTIDOCKER_BASE",
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -257,6 +270,8 @@ func run(c *cli.Context) error {
 			Labels:      c.StringSlice("custom-labels"),
 			LabelSchema: c.StringSlice("label-schema"),
 			NoCache:     c.Bool("no-cache"),
+			MultiDocker: c.StringSlice("multi-docker.list"),
+			MultiBase:   c.String("multi-docker.base"),
 		},
 		Daemon: docker.Daemon{
 			Registry:      c.String("docker.registry"),
