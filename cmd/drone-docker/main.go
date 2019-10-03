@@ -224,17 +224,17 @@ func main() {
 			EnvVar: "PLUGIN_NO_CACHE",
 		},
 		cli.StringSliceFlag{
-			Name:     "multi-docker.list",
-			Usage:    "multi-dockerfile list",
+			Name:     "multi-repo.list",
+			Usage:    "multi-repo list",
 			Value:    &cli.StringSlice{""},
-			EnvVar:   "PLUGIN_MULTIDOCKER_LIST",
-			FilePath: ".multidocker",
+			EnvVar:   "PLUGIN_MULTIREPO_LIST",
+			FilePath: ".multirepo",
 		},
 		cli.StringFlag{
-			Name:   "multi-docker.base",
-			Usage:  "multi-dockerfile base dir",
+			Name:   "multi-repo.base",
+			Usage:  "multi-repo base dir",
 			Value:  "",
-			EnvVar: "PLUGIN_MULTIDOCKER_BASE",
+			EnvVar: "PLUGIN_MULTIREPO_BASE",
 		},
 	}
 
@@ -270,8 +270,8 @@ func run(c *cli.Context) error {
 			Labels:      c.StringSlice("custom-labels"),
 			LabelSchema: c.StringSlice("label-schema"),
 			NoCache:     c.Bool("no-cache"),
-			MultiDocker: c.StringSlice("multi-docker.list"),
-			MultiBase:   c.String("multi-docker.base"),
+			MultiRepo:   c.StringSlice("multi-repo.list"),
+			MultiBase:   c.String("multi-repo.base"),
 		},
 		Daemon: docker.Daemon{
 			Registry:      c.String("docker.registry"),

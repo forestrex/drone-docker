@@ -52,8 +52,8 @@ type (
 		LabelSchema []string // label-schema Label map
 		Labels      []string // Label map
 		NoCache     bool     // Docker build no-cache
-		MultiDocker []string // Multi-Dockerfile folder list
-		MultiBase   string   // Multi-Dockerfile folder base
+		MultiRepo   []string // Multi-Repo list
+		MultiBase   string   // Multi-Repo folder base
 	}
 
 	// Plugin defines the Docker plugin parameters.
@@ -112,20 +112,25 @@ func (p Plugin) Exec() error {
 		cmds = append(cmds, commandPull(img))
 	}
 
-	for _, dockdir := range p.Build.MultiDocker {
-		cmds = append(cmds, commandBuild(p.Build, dockdir)) // docker build
+	registry := p.Daemon.Registry
+
+	// support multi-repo
+	for _, repo := range p.Build.MultiRepo {
+		cmds = append(cmds, commandBuild(p.Build, repo)) // docker build
 		for _, tag := range p.Build.Tags {
-			cmds = append(cmds, commandTag(p.Build, tag, dockdir)) // docker tag
+			cmds = append(cmds, commandTag(p.Build, tag, repo, registry)) // docker tag
 
 			if p.Dryrun == false {
-				cmds = append(cmds, commandPush(p.Build, tag, dockdir)) // docker push
+				cmds = append(cmds, commandPush(p.Build, tag, repo, registry)) // docker push
 			}
+		}
+		if p.Cleanup && repo == "" {
+			cmds = append(cmds, commandRmi(p.Build.Name)) // docker rmi
 		}
 	}
 
 	if p.Cleanup {
-		cmds = append(cmds, commandRmi(p.Build.Name)) // docker rmi
-		cmds = append(cmds, commandPrune())           // docker system prune -f
+		cmds = append(cmds, commandPrune()) // docker system prune -f
 	}
 
 	// execute all commands in batch mode.
@@ -188,20 +193,20 @@ func commandInfo() *exec.Cmd {
 }
 
 // helper function to create the docker build command.
-func commandBuild(build Build, dockername string) *exec.Cmd {
+func commandBuild(build Build, repo string) *exec.Cmd {
 	args := []string{
 		"build",
 		"--rm=true",
 	}
 
-	if dockername == "" {
+	if repo == "" {
 		args = append(args, "-f", build.Dockerfile)
 		args = append(args, "-t", build.Name)
 		args = append(args, build.Context)
 	} else {
-		args = append(args, "-f", build.MultiBase+dockername+"/"+build.Dockerfile)
-		args = append(args, "-t", dockername)
-		args = append(args, build.MultiBase+dockername+"/"+build.Context)
+		args = append(args, "-f", build.MultiBase+repo+"/"+build.Dockerfile)
+		args = append(args, "-t", repo)
+		args = append(args, build.MultiBase+repo+"/"+build.Context)
 	}
 
 	if build.Squash {
@@ -297,24 +302,32 @@ func hasProxyBuildArg(build *Build, key string) bool {
 }
 
 // helper function to create the docker tag command.
-func commandTag(build Build, tag string, dockername string) *exec.Cmd {
+func commandTag(build Build, tag string, repo string, registry string) *exec.Cmd {
 	source := build.Name
-	if dockername != "" {
-		source = dockername
+	srcrepo := build.Repo
+	if repo != "" {
+		source = repo
+		srcrepo = repo
 	}
-	target := fmt.Sprintf("%s/%s:%s", build.Repo, source, tag)
+	target := fmt.Sprintf("%s:%s", srcrepo, tag)
+	if registry != "" {
+		target = fmt.Sprintf("%s/%s", registry, target)
+	}
 	return exec.Command(
 		dockerExe, "tag", source, target,
 	)
 }
 
 // helper function to create the docker push command.
-func commandPush(build Build, tag string, dockername string) *exec.Cmd {
-	source := build.Name
-	if dockername != "" {
-		source = dockername
+func commandPush(build Build, tag string, repo string, registry string) *exec.Cmd {
+	srcrepo := build.Repo
+	if repo != "" {
+		srcrepo = repo
 	}
-	target := fmt.Sprintf("%s/%s:%s", build.Repo, source, tag)
+	target := fmt.Sprintf("%s:%s", srcrepo, tag)
+	if registry != "" {
+		target = fmt.Sprintf("%s/%s", registry, target)
+	}
 	return exec.Command(dockerExe, "push", target)
 }
 
