@@ -116,6 +116,10 @@ func (p Plugin) Exec() error {
 
 	// support multi-repo
 	for _, repo := range p.Build.MultiRepo {
+		if repo == "" {
+			continue
+		}
+
 		cmds = append(cmds, commandBuild(p.Build, repo)) // docker build
 		for _, tag := range p.Build.Tags {
 			cmds = append(cmds, commandTag(p.Build, tag, repo, registry)) // docker tag
