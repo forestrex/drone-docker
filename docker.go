@@ -121,9 +121,6 @@ func (p Plugin) Exec() error {
 		}
 
 		cmds = append(cmds, commandBuild(p.Build, repo)) // docker build
-		if len(p.Build.Tags) == 0 {
-			p.Build.Tags = append(p.Build.Tags, "latest")
-		}
 		for _, tag := range p.Build.Tags {
 			cmds = append(cmds, commandTag(p.Build, tag, repo, registry)) // docker tag
 
