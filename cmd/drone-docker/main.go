@@ -123,7 +123,7 @@ func main() {
 		cli.StringSliceFlag{
 			Name:     "tags",
 			Usage:    "build tags",
-			Value:    "",
+			Value:    &cli.StringSlice{"latest"},
 			EnvVar:   "PLUGIN_TAG,PLUGIN_TAGS",
 			FilePath: ".tags",
 		},
