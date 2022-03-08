@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -66,6 +67,41 @@ type (
 	}
 )
 
+var filewalk = filepath.Walk
+type FileWalk struct {
+	BasePath string
+	Tags     []string
+}
+
+func GetTagsByFileSuffix(basePath string) (tags []string) {
+	fw := &FileWalk{BasePath: basePath, Tags: []string{}}
+	filewalk(basePath, fw.WalkTagByPath)
+	tags = fw.Tags
+	return
+}
+
+func (f *FileWalk) WalkTagByPath(path string, info os.FileInfo, err error) error {
+	if tag := GetTagNameByPath(f.BasePath, path); tag != "" {
+		f.Tags = append(f.Tags, tag)
+	}
+	return nil
+}
+func GetTagNameByPath(basePath string, currentPath string) (tag string) {
+	tag = ""
+	if !strings.HasPrefix(currentPath, basePath) {
+		return
+	}
+	if currentPath == basePath {
+		tag = "latest"
+		return
+	}
+	if currentPath[len(basePath)] == '.' {
+		tag = currentPath[len(basePath) + 1:]
+		return
+	}
+	return
+}
+
 // Exec executes the plugin step
 func (p Plugin) Exec() error {
 	// start the Docker daemon server
@@ -120,17 +156,34 @@ func (p Plugin) Exec() error {
 			continue
 		}
 
-		cmds = append(cmds, commandBuild(p.Build, repo)) // docker build
-		for _, tag := range p.Build.Tags {
-			cmds = append(cmds, commandTag(p.Build, tag, repo, registry)) // docker tag
+		dockerfilepath := p.Build.Dockerfile
+		if repo != "" {
+			dockerfilepath = p.Build.MultiBase+repo+"/"+p.Build.Dockerfile
+		}
 
-			if p.Dryrun == false {
-				cmds = append(cmds, commandPush(p.Build, tag, repo, registry)) // docker push
+		tags := GetTagsByFileSuffix(dockerfilepath)
+
+		for _, tagBaseName := range tags {
+
+			cmds = append(cmds, commandBuild(p.Build, repo, tagBaseName)) // docker build
+			for _, suffix := range p.Build.Tags {
+				for _, prefix := range tags {
+					tagName := prefix + "-" + suffix
+					if suffix == "latest" {
+						tagName = prefix
+					}
+					cmds = append(cmds, commandTag(p.Build, prefix, tagName, repo, registry)) // docker tag
+
+					if p.Dryrun == false {
+						cmds = append(cmds, commandPush(p.Build, tagName, repo, registry)) // docker push
+					}
+				}
+			}
+			if p.Cleanup && repo == "" {
+				cmds = append(cmds, commandRmi(p.Build.Name + ":" + tagBaseName)) // docker rmi
 			}
 		}
-		if p.Cleanup && repo == "" {
-			cmds = append(cmds, commandRmi(p.Build.Name)) // docker rmi
-		}
+
 	}
 
 	if p.Cleanup {
@@ -197,19 +250,28 @@ func commandInfo() *exec.Cmd {
 }
 
 // helper function to create the docker build command.
-func commandBuild(build Build, repo string) *exec.Cmd {
+func commandBuild(build Build, repo string, tag string) *exec.Cmd {
 	args := []string{
 		"build",
 		"--rm=true",
 	}
 
+	if tag == "" {
+		tag = "default"
+	}
+
+	dockerfile := build.Dockerfile + "." + tag
+	if tag == "default" {
+		dockerfile = build.Dockerfile
+	}
+
 	if repo == "" {
-		args = append(args, "-f", build.Dockerfile)
-		args = append(args, "-t", build.Name)
+		args = append(args, "-f", dockerfile)
+		args = append(args, "-t", build.Name + ":" + tag)
 		args = append(args, build.Context)
 	} else {
-		args = append(args, "-f", build.MultiBase+repo+"/"+build.Dockerfile)
-		args = append(args, "-t", repo)
+		args = append(args, "-f", build.MultiBase+repo+"/"+dockerfile)
+		args = append(args, "-t", repo + ":" + tag)
 		args = append(args, build.MultiBase+repo+"/"+build.Context)
 	}
 
@@ -306,13 +368,14 @@ func hasProxyBuildArg(build *Build, key string) bool {
 }
 
 // helper function to create the docker tag command.
-func commandTag(build Build, tag string, repo string, registry string) *exec.Cmd {
+func commandTag(build Build, basetag string, tag string, repo string, registry string) *exec.Cmd {
 	source := build.Name
 	srcrepo := build.Repo
 	if repo != "" {
 		source = repo
 		srcrepo = repo
 	}
+	source += ":" + basetag
 	target := fmt.Sprintf("%s:%s", srcrepo, tag)
 	if registry != "" {
 		target = fmt.Sprintf("%s/%s", registry, target)
