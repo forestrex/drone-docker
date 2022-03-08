@@ -75,7 +75,7 @@ type FileWalk struct {
 
 func GetTagsByFileSuffix(basePath string) (tags []string) {
 	fw := &FileWalk{BasePath: basePath, Tags: []string{}}
-	filewalk(basePath, fw.WalkTagByPath)
+	filewalk(filepath.Dir(basePath), fw.WalkTagByPath)
 	tags = fw.Tags
 	return
 }
@@ -167,16 +167,14 @@ func (p Plugin) Exec() error {
 
 			cmds = append(cmds, commandBuild(p.Build, repo, tagBaseName)) // docker build
 			for _, suffix := range p.Build.Tags {
-				for _, prefix := range tags {
-					tagName := prefix + "-" + suffix
-					if suffix == "latest" {
-						tagName = prefix
-					}
-					cmds = append(cmds, commandTag(p.Build, prefix, tagName, repo, registry)) // docker tag
+				tagName := tagBaseName + "-" + suffix
+				if suffix == "latest" {
+					tagName = tagBaseName
+				}
+				cmds = append(cmds, commandTag(p.Build, tagBaseName, tagName, repo, registry)) // docker tag
 
-					if p.Dryrun == false {
-						cmds = append(cmds, commandPush(p.Build, tagName, repo, registry)) // docker push
-					}
+				if p.Dryrun == false {
+					cmds = append(cmds, commandPush(p.Build, tagName, repo, registry)) // docker push
 				}
 			}
 			if p.Cleanup && repo == "" {
@@ -257,11 +255,11 @@ func commandBuild(build Build, repo string, tag string) *exec.Cmd {
 	}
 
 	if tag == "" {
-		tag = "default"
+		tag = "latest"
 	}
 
 	dockerfile := build.Dockerfile + "." + tag
-	if tag == "default" {
+	if tag == "latest" {
 		dockerfile = build.Dockerfile
 	}
 
